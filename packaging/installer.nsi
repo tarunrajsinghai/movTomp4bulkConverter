@@ -42,7 +42,7 @@ FunctionEnd
 
 Section "Application"
     SetOutPath "$INSTDIR"
-    File /r "${PAYLOAD}/*"
+    File /r "${PAYLOAD}\*"
     WriteUninstaller "$INSTDIR\Uninstall.exe"
     CreateDirectory "$SMPROGRAMS\MOV to MP4 Converter"
     CreateShortCut "$SMPROGRAMS\MOV to MP4 Converter\MOV to MP4 Converter.lnk" "$INSTDIR\runtime\python\pythonw.exe" '"$INSTDIR\app.py"'
