@@ -1,0 +1,76 @@
+name: Windows installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app.py'
+      - 'engine.py'
+      - 'convert.py'
+      - 'requirements-ui.txt'
+      - 'packaging/**'
+      - 'tests/**'
+      - 'tests_ui/**'
+      - 'README.md'
+      - 'THIRD_PARTY_NOTICES.md'
+      - '.github/workflows/windows-installer.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-installer:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis --yes --no-progress
+      - name: Build the offline Windows installer
+        shell: pwsh
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          python packaging/build_windows.py --makensis $compiler
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate the packaged runtime, conversions, and desktop UI
+        shell: pwsh
+        run: |
+          $payload = Join-Path $PWD 'build/windows/app'
+          $python = Join-Path $payload 'runtime/python/python.exe'
+          $env:PATH = "$payload/runtime;$env:PATH"
+          & $python -m unittest discover -s tests -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $python -m unittest discover -s tests_ui -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $python "$payload/app.py" --smoke-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate installation and uninstall
+        shell: pwsh
+        run: |
+          $installer = (Resolve-Path 'dist/MOV-to-MP4-Setup-1.0.0-x64.exe').Path
+          $installPath = Join-Path $env:LOCALAPPDATA 'Programs/MOV to MP4 Converter'
+          $process = Start-Process $installer -ArgumentList '/S' -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
+          & "$installPath/runtime/python/python.exe" "$installPath/app.py" --smoke-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path "$env:APPDATA/Microsoft/Windows/Start Menu/Programs/MOV to MP4 Converter/MOV to MP4 Converter.lnk")) { throw 'Missing Start menu shortcut' }
+          Set-Content "$installPath/preserve-user-file.txt" 'Keep this user file'
+          $process = Start-Process "$installPath/Uninstall.exe" -ArgumentList '/S' -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "Uninstall failed: $($process.ExitCode)" }
+          $deadline = (Get-Date).AddSeconds(30)
+          while ((Test-Path "$installPath/runtime") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
+          if (Test-Path "$installPath/runtime") { throw 'Runtime was not removed' }
+          if (!(Test-Path "$installPath/preserve-user-file.txt")) { throw 'User file was removed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MOV-to-MP4-Windows-Installer
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
