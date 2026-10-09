@@ -84,6 +84,9 @@ jobs:
           Add-Content $env:GITHUB_STEP_SUMMARY '```text'
           if (Test-Path build-output.txt) {
             Get-Content build-output.txt -Tail 50 | Add-Content $env:GITHUB_STEP_SUMMARY
+            $diagnostic = (Get-Content build-output.txt -Tail 20) -join "`n"
+            $diagnostic = $diagnostic.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Windows installer build diagnostic::$diagnostic"
           } else {
             Add-Content $env:GITHUB_STEP_SUMMARY 'The build script did not produce a log.'
           }
