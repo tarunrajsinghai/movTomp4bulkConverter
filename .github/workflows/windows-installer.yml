@@ -37,8 +37,15 @@ jobs:
         shell: pwsh
         run: |
           $compiler = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
-          python packaging/build_windows.py --makensis $compiler
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python packaging/build_windows.py --makensis $compiler 2>&1 | Tee-Object -FilePath build-output.txt
+          $buildExitCode = $LASTEXITCODE
+          if ($buildExitCode -ne 0) {
+            Add-Content $env:GITHUB_STEP_SUMMARY '### Installer build failure'
+            Add-Content $env:GITHUB_STEP_SUMMARY '```text'
+            Get-Content build-output.txt -Tail 50 | Add-Content $env:GITHUB_STEP_SUMMARY
+            Add-Content $env:GITHUB_STEP_SUMMARY '```'
+            exit $buildExitCode
+          }
       - name: Validate the packaged runtime, conversions, and desktop UI
         shell: pwsh
         run: |
