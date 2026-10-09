@@ -36,6 +36,7 @@ jobs:
       - name: Build the offline Windows installer
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Continue'
           $compiler = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
           python packaging/build_windows.py --makensis $compiler 2>&1 | Tee-Object -FilePath build-output.txt
           $buildExitCode = $LASTEXITCODE
@@ -75,6 +76,18 @@ jobs:
           while ((Test-Path "$installPath/runtime") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
           if (Test-Path "$installPath/runtime") { throw 'Runtime was not removed' }
           if (!(Test-Path "$installPath/preserve-user-file.txt")) { throw 'User file was removed' }
+      - name: Report build diagnostics on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Add-Content $env:GITHUB_STEP_SUMMARY '### Windows build diagnostics'
+          Add-Content $env:GITHUB_STEP_SUMMARY '```text'
+          if (Test-Path build-output.txt) {
+            Get-Content build-output.txt -Tail 50 | Add-Content $env:GITHUB_STEP_SUMMARY
+          } else {
+            Add-Content $env:GITHUB_STEP_SUMMARY 'The build script did not produce a log.'
+          }
+          Add-Content $env:GITHUB_STEP_SUMMARY '```'
       - uses: actions/upload-artifact@v4
         with:
           name: MOV-to-MP4-Windows-Installer
